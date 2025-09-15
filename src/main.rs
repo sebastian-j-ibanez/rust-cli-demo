@@ -1,8 +1,6 @@
-pub mod term_manager;
-
 use std::io::{self, Read, Write};
 
-use crate::term_manager::TermManager;
+use term_manager::TermManager;
 
 enum InputState {
     Normal,
@@ -10,12 +8,12 @@ enum InputState {
     BracketedEscape,
 }
 
-fn main() -> io::Result<()> {
-    let mut tmanager = match TermManager::init() {
+fn main() -> Result<(), ()> {
+    let mut tmanager = match TermManager::new() {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("{}", e);
-            return Err(e);
+            eprintln!("{:?}", e);
+            return Err(());
         }
     };
 
@@ -28,18 +26,22 @@ fn main() -> io::Result<()> {
     let mut input_state = InputState::Normal;
     let mut escape_buffer = Vec::new();
 
-    tmanager.stdout.flush()?;
+    if let Err(e) = tmanager.flush() {
+        return Err(());
+    };
+
     const PROMPT: &str = "> ";
     print!("{}", PROMPT);
-    tmanager.stdout.flush()?;
+    if let Err(e) = tmanager.flush() {
+        return Err(());
+    };
 
     loop {
         let mut buf = [0u8; 1];
-        let _bytes_read = match tmanager.stdin.read(&mut buf) {
-            Ok(0) => break,
+        match tmanager.read(&mut buf) {
             Ok(n) => n,
             Err(e) => {
-                eprintln!("Error reading from tmanager.tmanager.stdin: {}", e);
+                eprintln!("Error reading from tmanager.tmanager.stdin: {:?}", e);
                 break;
             }
         };
@@ -67,7 +69,9 @@ fn main() -> io::Result<()> {
                             line = lines[lines_pos - 1].clone();
                             lines_pos -= 1;
                             print!("\r{}{}\x1b[K", PROMPT, line);
-                            tmanager.stdout.flush()?;
+                            if let Err(e) = tmanager.flush() {
+                                return Err(());
+                            };
                             cursor_pos = 0;
                         }
                         input_state = InputState::Normal;
@@ -79,7 +83,9 @@ fn main() -> io::Result<()> {
                             lines_pos += 1;
                             line = lines[lines_pos].clone();
                             print!("\r{}{}\x1b[K", PROMPT, line);
-                            tmanager.stdout.flush()?;
+                            if let Err(e) = tmanager.flush() {
+                                return Err(());
+                            };
                             cursor_pos = 0;
                         }
                         input_state = InputState::Normal;
@@ -88,8 +94,10 @@ fn main() -> io::Result<()> {
                     // Right
                     b'C' => {
                         if cursor_pos < line.chars().count() {
-                            write!(tmanager.stdout, "\x1b[1C")?;
-                            tmanager.stdout.flush()?;
+                            tmanager.write("\x1b[1C".as_bytes());
+                            if let Err(e) = tmanager.flush() {
+                                return Err(());
+                            };
                             cursor_pos += 1;
                         }
                         input_state = InputState::Normal;
@@ -98,8 +106,10 @@ fn main() -> io::Result<()> {
                     // Left
                     b'D' => {
                         if cursor_pos > 0 {
-                            write!(tmanager.stdout, "\x1b[1D")?;
-                            tmanager.stdout.flush()?;
+                            tmanager.write("\x1b[1D".as_bytes());
+                            if let Err(e) = tmanager.flush() {
+                                return Err(());
+                            };
                             cursor_pos -= 1;
                         }
                         input_state = InputState::Normal;
@@ -121,7 +131,9 @@ fn main() -> io::Result<()> {
                     line.clear();
                     cursor_pos = 0;
                     print!("{}", PROMPT);
-                    tmanager.stdout.flush()?;
+                    if let Err(e) = tmanager.flush() {
+                        return Err(());
+                    };
                 }
                 b'\x08' | b'\x7f' => {
                     if cursor_pos > 0 {
@@ -138,13 +150,17 @@ fn main() -> io::Result<()> {
 
                         cursor_pos -= 1;
 
-                        write!(tmanager.stdout, "\x1b[1D").unwrap();
-                        write!(tmanager.stdout, "{}\x1b[K", &line[byte_idx_to_remove..]).unwrap();
+                        tmanager.write("\x1b[1D".as_bytes());
+                        let clear_line_cmd = format!("{}\x1b[K", &line[byte_idx_to_remove..]);
+                        tmanager.write(clear_line_cmd.as_bytes());
                         let chars_after_cursor = line.chars().skip(cursor_pos).count();
                         if chars_after_cursor > 0 {
-                            write!(tmanager.stdout, "\x1b[{}D", chars_after_cursor).unwrap();
+                            let move_cursor_left = format!("\x1b[{}D", chars_after_cursor);
+                            tmanager.write(move_cursor_left.as_bytes());
                         }
-                        tmanager.stdout.flush()?;
+                        if let Err(e) = tmanager.flush() {
+                            return Err(());
+                        };
                     }
                 }
                 _ => {
@@ -163,17 +179,22 @@ fn main() -> io::Result<()> {
                                     byte_idx = idx;
                                 }
                                 line.insert(byte_idx, char_byte);
-                                write!(tmanager.stdout, "\x1b[{}D", cursor_pos).unwrap();
-                                write!(tmanager.stdout, "{}\x1b[K", line).unwrap();
+                                let move_cursor_left = format!("\x1b[{}D", cursor_pos);
+                                tmanager.write(move_cursor_left.as_bytes());
+                                let clear_line_cmd = format!("{}\x1b[K", line);
+                                tmanager.write(clear_line_cmd.as_bytes());
                                 let chars_after_new_cursor =
                                     line.chars().skip(cursor_pos + 1).count();
                                 if chars_after_new_cursor > 0 {
-                                    write!(tmanager.stdout, "\x1b[{}D", chars_after_new_cursor)
-                                        .unwrap();
+                                    let move_cursor_left =
+                                        format!("\x1b[{}D", chars_after_new_cursor);
+                                    tmanager.write(move_cursor_left.as_bytes());
                                 }
                             }
                             cursor_pos += 1;
-                            tmanager.stdout.flush()?;
+                            if let Err(e) = tmanager.flush() {
+                                return Err(());
+                            };
                         }
                     }
                 }
