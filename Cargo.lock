@@ -48,9 +48,9 @@ dependencies = [
 
 [[package]]
 name = "term_manager"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2744b59be6ce947cb295a85007d194483d1ac701b4da0f76fdf9e493fb24292e"
+checksum = "f276e0358773b44f3864b04d365d7a28442f95d8d044fbed22d0ba495bad9873"
 dependencies = [
  "libc",
  "nix",
