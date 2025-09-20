@@ -31,10 +31,10 @@ enum ReplState {
     Break,
 }
 
-pub enum InputState {
+pub enum InputType {
     Normal,
     Escape,
-    BracketedEscape,
+    EscapeSequence,
 }
 
 pub struct Repl {
@@ -46,7 +46,7 @@ pub struct Repl {
     cursor_pos: usize,
     lines_pos: usize,
     escape_buffer: Vec<u8>,
-    input_state: InputState,
+    input_state: InputType,
     prompt: String,
 }
 
@@ -65,7 +65,7 @@ impl Repl {
         let lines: Vec<String> = Vec::new();
         let lines_pos: usize = 0;
         let escape_buffer = Vec::new();
-        let input_state = InputState::Normal;
+        let input_state = InputType::Normal;
 
         Ok(Repl {
             tmanager,
@@ -94,19 +94,19 @@ impl Repl {
             let c = buf[0];
 
             match self.input_state {
-                InputState::Escape => {
+                InputType::Escape => {
                     self.escape_buffer.push(c);
                     match c {
                         b'[' => {
-                            self.input_state = InputState::BracketedEscape;
+                            self.input_state = InputType::EscapeSequence;
                         }
                         _ => {
-                            self.input_state = InputState::Normal;
+                            self.input_state = InputType::Normal;
                             self.escape_buffer.clear();
                         }
                     }
                 }
-                InputState::BracketedEscape => {
+                InputType::EscapeSequence => {
                     self.escape_buffer.push(c);
                     match self.handle_ansi_escape_sequence(c) {
                         Ok(_) => {}
@@ -116,7 +116,7 @@ impl Repl {
                         }
                     }
                 }
-                InputState::Normal => match self.handle_normal_input(c) {
+                InputType::Normal => match self.handle_normal_input(c) {
                     Ok(ReplState::Break) => break,
                     Ok(ReplState::Continue) => continue,
                     Err(e) => {
@@ -144,7 +144,7 @@ impl Repl {
                     };
                     self.cursor_pos = 0;
                 }
-                self.input_state = InputState::Normal;
+                self.input_state = InputType::Normal;
                 self.escape_buffer.clear();
             }
             // Get next line from history.
@@ -159,7 +159,7 @@ impl Repl {
                     };
                     self.cursor_pos = 0;
                 }
-                self.input_state = InputState::Normal;
+                self.input_state = InputType::Normal;
                 self.escape_buffer.clear();
             }
             // Move cursor right.
@@ -177,7 +177,7 @@ impl Repl {
 
                     self.cursor_pos += 1;
                 }
-                self.input_state = InputState::Normal;
+                self.input_state = InputType::Normal;
                 self.escape_buffer.clear();
             }
             // Move cursor left.
@@ -193,7 +193,7 @@ impl Repl {
                     };
                     self.cursor_pos -= 1;
                 }
-                self.input_state = InputState::Normal;
+                self.input_state = InputType::Normal;
                 self.escape_buffer.clear();
             }
             _ => {}
@@ -206,7 +206,7 @@ impl Repl {
         match c {
             // Escape character.
             b'\x1b' => {
-                self.input_state = InputState::Escape;
+                self.input_state = InputType::Escape;
                 self.escape_buffer.clear();
             }
             b'q' | b'\x03' => return Ok(ReplState::Break),
